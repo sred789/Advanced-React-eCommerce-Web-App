@@ -1,52 +1,53 @@
 // src/redux/cartSlice.ts
 import { createSlice } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
+import type { Product } from "../types/Product"; // Firestore Product type
 
-export interface Product {
-  id: number;
-  title: string;
-  price: number;
-  description: string;
-  category: string;
-  image: string;
-  rating: { rate: number; count: number };
-  quantity?: number;
+export interface CartItem {
+  product: Product;
+  quantity: number;
 }
 
 interface CartState {
-  products: Product[];
+  products: CartItem[];
 }
 
+// Load cart from sessionStorage safely
+const loadCart = (): CartItem[] => {
+  try {
+    const data = sessionStorage.getItem("cart");
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+};
+
 const initialState: CartState = {
-  products: JSON.parse(sessionStorage.getItem("cart") || "[]"),
+  products: loadCart(),
 };
 
 const cartSlice = createSlice({
   name: "cart",
   initialState,
   reducers: {
-    addToCart: (
-      state,
-      action: PayloadAction<{ product: Product; quantity: number }>,
-    ) => {
+    addToCart: (state, action: PayloadAction<CartItem>) => {
       const existing = state.products.find(
-        (p) => p.id === action.payload.product.id,
+        (item) => item.product.id === action.payload.product.id,
       );
 
       if (existing) {
-        existing.quantity! += action.payload.quantity;
+        existing.quantity += action.payload.quantity;
       } else {
-        state.products.push({
-          ...action.payload.product,
-          quantity: action.payload.quantity,
-        });
+        state.products.push(action.payload);
       }
 
       sessionStorage.setItem("cart", JSON.stringify(state.products));
     },
 
-    removeFromCart: (state, action: PayloadAction<number>) => {
-      state.products = state.products.filter((p) => p.id !== action.payload);
+    removeFromCart: (state, action: PayloadAction<string>) => {
+      state.products = state.products.filter(
+        (item) => item.product.id !== action.payload,
+      );
       sessionStorage.setItem("cart", JSON.stringify(state.products));
     },
 

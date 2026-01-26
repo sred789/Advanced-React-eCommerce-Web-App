@@ -1,124 +1,101 @@
 // src/components/Home.tsx
-import React from "react";
-import { Row, Col, Card, Button, Form } from "react-bootstrap";
+import React, { useState } from "react";
+import { Card, Button, Row, Col, Form, Spinner } from "react-bootstrap";
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
+import { getProducts } from "../firebase/productService";
 import { useDispatch } from "react-redux";
 import { addToCart } from "../redux/cartSlice";
-import type { Product } from "../redux/cartSlice";
-
-const fetchCategories = async (): Promise<string[]> => {
-  const res = await axios.get("https://fakestoreapi.com/products/categories");
-  return res.data;
-};
-
-const fetchProducts = async (category?: string): Promise<Product[]> => {
-  const url = category
-    ? `https://fakestoreapi.com/products/category/${category}`
-    : "https://fakestoreapi.com/products";
-  const res = await axios.get(url);
-  return res.data;
-};
+import type { Product } from "../types/Product";
 
 const Home: React.FC = () => {
   const dispatch = useDispatch();
-  const [selectedCategory, setSelectedCategory] = React.useState("");
-  const [quantities, setQuantities] = React.useState<Record<number, number>>(
-    {},
-  );
-  const [addedProductId, setAddedProductId] = React.useState<number | null>(
-    null,
-  );
 
-  const { data: categories = [] } = useQuery({
-    queryKey: ["categories"],
-    queryFn: fetchCategories,
+  // Track which product has been added for temporary feedback
+  const [addedProductIds, setAddedProductIds] = useState<string[]>([]);
+
+  // Track quantity selection per product
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+
+  // Fetch products from Firestore
+  const { data: products, isLoading } = useQuery<Product[], Error>({
+    queryKey: ["products"],
+    queryFn: getProducts,
   });
 
-  const { data: products = [] } = useQuery({
-    queryKey: ["products", selectedCategory],
-    queryFn: () => fetchProducts(selectedCategory),
-  });
+  if (isLoading) return <Spinner animation="border" />;
 
   const handleAddToCart = (product: Product) => {
-    const quantity = quantities[product.id] || 1;
+    const quantity = quantities[product.id!] || 1;
 
-    dispatch(addToCart({ product, quantity }));
+    dispatch(
+      addToCart({
+        product,
+        quantity,
+      }),
+    );
 
-    setAddedProductId(product.id);
-    setTimeout(() => setAddedProductId(null), 2000);
-  };
-
-  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    e.currentTarget.src = "https://via.placeholder.com/150";
+    // Show temporary feedback
+    setAddedProductIds((prev) => [...prev, product.id!]);
+    setTimeout(() => {
+      setAddedProductIds((prev) => prev.filter((id) => id !== product.id));
+    }, 1500);
   };
 
   return (
-    <>
-      <Form.Select
-        className="mb-3"
-        value={selectedCategory}
-        onChange={(e) => setSelectedCategory(e.target.value)}
-      >
-        <option value="">All Categories</option>
-        {categories.map((cat) => (
-          <option key={cat} value={cat}>
-            {cat}
-          </option>
-        ))}
-      </Form.Select>
+    <Row className="g-4">
+      {products?.map((product) => (
+        <Col key={product.id} xs={12} md={6} lg={4}>
+          <Card style={{ height: "100%" }}>
+            <Card.Img
+              variant="top"
+              src={product.image || "https://via.placeholder.com/150"}
+              onError={(e) =>
+                ((e.target as HTMLImageElement).src =
+                  "https://via.placeholder.com/150")
+              }
+              style={{ objectFit: "contain", height: 200 }}
+            />
+            <Card.Body className="d-flex flex-column">
+              <Card.Title>{product.title}</Card.Title>
+              <Card.Text style={{ flex: 1 }}>{product.description}</Card.Text>
+              <Card.Text>
+                <strong>Price:</strong> ${product.price.toFixed(2)}
+                <br />
+                <strong>Rating:</strong> {product.rating} ⭐
+              </Card.Text>
 
-      <Row>
-        {products.map((product) => (
-          <Col md={4} key={product.id} className="mb-4">
-            <Card>
-              <Card.Img
-                src={product.image}
-                onError={handleImageError}
-                style={{ height: "300px", objectFit: "contain" }}
-              />
-              <Card.Body>
-                <Card.Title>{product.title}</Card.Title>
-                <Card.Text>
-                  <strong>${product.price}</strong>
-                  <br />
-                  Rating: {product.rating.rate}
-                  <br />
-                  {product.description.slice(0, 80)}...
-                </Card.Text>
+              <Form.Select
+                className="mb-2"
+                value={quantities[product.id!] || 1}
+                onChange={(e) =>
+                  setQuantities((prev) => ({
+                    ...prev,
+                    [product.id!]: parseInt(e.target.value),
+                  }))
+                }
+              >
+                {[...Array(10)].map((_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {i + 1}
+                  </option>
+                ))}
+              </Form.Select>
 
-                <Form.Select
-                  className="mb-2"
-                  value={quantities[product.id] || 1}
-                  onChange={(e) =>
-                    setQuantities({
-                      ...quantities,
-                      [product.id]: Number(e.target.value),
-                    })
-                  }
-                >
-                  {[1, 2, 3, 4, 5].map((num) => (
-                    <option key={num} value={num}>
-                      Qty: {num}
-                    </option>
-                  ))}
-                </Form.Select>
-
-                <Button
-                  variant={
-                    addedProductId === product.id ? "success" : "primary"
-                  }
-                  onClick={() => handleAddToCart(product)}
-                  disabled={addedProductId === product.id}
-                >
-                  {addedProductId === product.id ? "Added ✓" : "Add to Cart"}
-                </Button>
-              </Card.Body>
-            </Card>
-          </Col>
-        ))}
-      </Row>
-    </>
+              <Button
+                variant={
+                  addedProductIds.includes(product.id!) ? "success" : "primary"
+                }
+                onClick={() => handleAddToCart(product)}
+              >
+                {addedProductIds.includes(product.id!)
+                  ? "Added!"
+                  : "Add to Cart"}
+              </Button>
+            </Card.Body>
+          </Card>
+        </Col>
+      ))}
+    </Row>
   );
 };
 
